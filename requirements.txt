@@ -1,0 +1,7 @@
+langchain-groq
+langchain-mcp-adapters
+mcp
+langgraph
+langchain_google_genai
+langchain
+langchain-core
