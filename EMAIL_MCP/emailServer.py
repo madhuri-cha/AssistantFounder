@@ -6,6 +6,9 @@ from langchain.prompts import PromptTemplate
 import smtplib
 from email.message import EmailMessage
 import json
+from langchain_ollama import ChatOllama 
+import re
+
 
 load_dotenv()
 
@@ -13,61 +16,71 @@ api_key = os.getenv("GEMINI_API_KEY")
 
 mcp = FastMCP("Email")
 
-model =  ChatGoogleGenerativeAI(model="gemini-2.5-flash",api_key = api_key);
-
+# model =  ChatGoogleGenerativeAI(model="gemini-2.5-flash",api_key = api_key);
+model = ChatOllama(model="llama3")
 
 from pydantic import BaseModel
 
 class SendEmailArgs(BaseModel):
-    to: str
-    subject: str
-    body: str
+    user_query : str
+
 
 class SendEmailResponse(BaseModel):
     success: bool
     message: str
 
+
 def generateContent(query:str):
-    template = """You are the exper email generator. You have provided with the user response.
-        Your task is to compose email regarding that response.
-        
-        user query:
-        {query}
+    template = """You are an expert email generator. You are provided with the user's query.
+    Your task is to compose an email based on that query.
 
-        From the above user query, you have to generate the subject and body of the email. 
+    User query:
+    {query}
 
-        Output format you have to follow:
-        {
-            subject : "",
-            body : "",
-            destination_address : "",
-        }
+    Generate the subject, body, and destination address in the following JSON format. The output must be a valid JSON object with double quotes around keys and string values. Escape newline characters, carriage returns, and other special characters properly using backslashes.
 
-        Note that user will provide you the destination email address which you have to identify and add into the above output.
+    Respond ONLY with the JSON object. Do not include any explanation, text, or other formatting.
 
-        Make sure that you strictly follow the above output format and doen't give anything else as I have to use this in further code.            
+    If you are unable to generate a valid email, respond with:
+    {{
+        "subject": "",
+        "body": "",
+        "destination_address": ""
+    }}
+
+    
     """
-
     prompt = PromptTemplate(
         input_variables=["query"],
         template=template
     )
+    final_prompt = prompt.format(query = query)
 
-    final_prompt = prompt.format(query = query);
+    response = model.invoke([{"role": "system", "content": "Compose mail alinghed with subject and destination address should be accurate."},{"role": "user", "content": final_prompt}])
+    print("Raw response:", response.content)
 
-    response = model.invoke({"contents": [{"role": "user", "content": final_prompt}]})
-    print(response)
+    
+
     try:
-        data = json.loads(response.content)
-        return data
+        # Extract JSON block from response
+        match = re.search(r'\{.*\}', response.content, re.DOTALL)
+        if match:
+            json_str = match.group(0)
+            data = json.loads(json_str)
+            return data
+        else:
+            print("No JSON found in the response")
+            return None
     except json.JSONDecodeError as e:
-        print("Failed to parse LLM output:", e)
-        raise
+        print("Failed to parse JSON:", e)
+        print("Response content:", response.content)
+        return None
+    
 
-    return response
 
 
 def send_email(data:dict):
+    print(data)
     from_email = os.getenv('APP_EMAIL')
     from_password = os.getenv('APP_PASSCODE')
 
@@ -91,28 +104,20 @@ def send_email(data:dict):
 
 
 @mcp.tool()
-def sendEmail(args: SendEmailArgs) -> bool:
-    print("sendEmail tool triggered with:", args)
-    from_email = os.getenv('APP_EMAIL')
-    from_password = os.getenv('APP_PASSCODE')
-
-    msg = EmailMessage()
-    msg['Subject'] = args.subject
-    msg['From'] = from_email
-    msg['To'] = args.to
-    msg.set_content(args.body)
+def sendEmail(args: SendEmailArgs) -> SendEmailResponse:
+    """
+    This tool will be used for sending the email.
+    """
 
     try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-            smtp.starttls()
-            smtp.login(from_email, from_password)
-            smtp.send_message(msg)
-            print("Email sent successfully!")
-            return True
+       email_body = generateContent(args.user_query)
+       print(email_body)
+       return send_email(email_body)
 
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return False
+        error_msg = f"An error occurred: {e}"
+        print(error_msg)
+        return SendEmailResponse(success=False, message=error_msg)
 
 
 

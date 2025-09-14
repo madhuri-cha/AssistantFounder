@@ -5,6 +5,7 @@ from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 import os
 import asyncio
+import json
 
 load_dotenv()
 
@@ -13,16 +14,17 @@ os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
 
 model =  ChatGoogleGenerativeAI(model="gemini-2.5-flash",api_key = api_key);
 #model = ChatGroq(model="openai/gpt-oss-120b")
+# model = ChatOllama(model="llama3")
+
 
 async def main():
-    client = MultiServerMCPClient(
-        {
-            "Email":{
-                "url":"http://localhost:8000/mcp",
-                "transport" :"streamable_http"
-            }
-        }
-    )
+    client = MultiServerMCPClient({
+    "Email": {
+        "url": "http://localhost:8000/mcp",
+        "transport": "streamable_http"
+    }
+})
+
 
     tools = await client.get_tools()
     # print("Available tools ", tools)
@@ -30,16 +32,19 @@ async def main():
         model, tools
     )
 
-    email_reslopse = await agent.ainvoke(
+    email_response = await agent.ainvoke(
         {"messages":[{
                 "role": "system",
                 "content": "You are an assistant that must always use available tools to complete tasks. For email tasks, use the sendEmail tool and do not reply without using it.The name of the sender is Prajwal"
             },
             {
                 "role": "user",
-                "content": "Send email to my professor about my leave for the PBL practical in next week. His email address is mohitunde7@gmail.com"
+                "content": "My friend mohit wants some proposal tips for his girlfriend. Her name is Avni. Send him email conatining proposal tips. His email address is mohitunde7@gmail.com"
             }
-            ]}
+            ]
+        }
     )
+
+    
 
 asyncio.run(main())
