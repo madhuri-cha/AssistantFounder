@@ -6,12 +6,7 @@ from dotenv import load_dotenv
 import requests
 import os
 from mcp.server.fastmcp import FastMCP
-
 from pydantic import BaseModel
-
-class InstagramPostResponse(BaseModel):
-    success: bool
-    message: str
 
     
 mcp = FastMCP("Instagram", port=8000)
@@ -23,25 +18,33 @@ ig_user_id = os.getenv("ig_user_id")
 
 client = OpenAI()
 
-@mcp.tool()
-def post_image(user_query: str) -> InstagramPostResponse:
-    """
-    This tool creates an image using DALL·E and posts it to Instagram.
-    """
-    try:
-        # 1️ Generate image
-        result = client.images.generate(
+
+
+
+
+@mcp.tool(name = "createImage")
+def createImage(user_instrucion:str):
+    """ This tool creates an image using DALL·E """
+    result = client.images.generate(
             model="dall-e-3",
-            prompt=user_query,
+            prompt=user_instrucion,
             size="1024x1024"
         )
 
-        image_url = result.data[0].url
-        if not image_url:
-            return InstagramPostResponse(
-                success=False,
-                message="Image generation failed"
-            )
+    image_url = result.data[0].url
+    if not image_url:
+        return {
+                "success" : False,
+                "message" :"Image generation failed"
+            }
+    return image_url
+    
+@mcp.tool(name = "postImage")
+def post_image(image_url):
+    """
+    This tool posts image on instagram based on it's link to Instagram.
+    """
+    try:       
 
         # 2️ Create media container
         media_url = f"https://graph.facebook.com/v17.0/{ig_user_id}/media"
@@ -56,10 +59,10 @@ def post_image(user_query: str) -> InstagramPostResponse:
         data = response.json()
 
         if "id" not in data:
-            return InstagramPostResponse(
-                success=False,
-                message=f"Failed to create media container: {data}"
-            )
+            return {
+                "success" : False,
+                "message" : f"Failed to create media container: {data}"
+            }
 
         creation_id = data["id"]
 
@@ -75,22 +78,22 @@ def post_image(user_query: str) -> InstagramPostResponse:
         publish_data = publish_response.json()
 
         if "id" not in publish_data:
-            return InstagramPostResponse(
-                success=False,
-                message=f"Failed to publish media: {publish_data}"
-            )
+            return {
+                "success" : False,
+                "message" : f"Failed to publish media: {publish_data}"
+            }
 
         #  Success
-        return InstagramPostResponse(
-            success=True,
-            message="Image successfully posted to Instagram"
-        )
+        return {
+            "success" : True,
+            "message" : "Image successfully posted to Instagram"
+        }
 
     except Exception as e:
-        return InstagramPostResponse(
-            success=False,
-            message=f"Unexpected error: {str(e)}"
-        )
+        return {
+            "success" : False,
+            "message" : f"Unexpected error: {str(e)}"
+        }
 
     
 
